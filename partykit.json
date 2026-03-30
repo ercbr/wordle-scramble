@@ -1,0 +1,8 @@
+{
+  "name": "wordle-scramble",
+  "main": "party/server.js",
+  "compatibilityDate": "2024-09-01",
+  "parties": {
+    "leaderboard": "party/leaderboard.js"
+  }
+}
