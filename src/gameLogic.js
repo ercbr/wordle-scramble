@@ -186,26 +186,35 @@ export function getBotGuess(previousGuesses, target) {
   }
 
   // Build constraints from previous guesses
+  // Two passes: first collect greens/yellows, then determine grays
   const greens = {};    // position -> letter (must be here)
   const yellows = {};   // letter -> Set of positions it's NOT at
-  const grays = new Set(); // letters not in the word at all
-  const yellowLetters = new Set(); // letters that ARE in the word somewhere
+  const grays = new Set(); // letters confirmed not in the word
+  const presentLetters = new Set(); // letters confirmed IN the word (green or yellow)
 
+  // Pass 1: collect all green and yellow info
   for (const word of previousGuesses) {
     const eval_ = evaluateGuess(word, target);
     for (let i = 0; i < 5; i++) {
       const letter = word[i];
       if (eval_[i] === 'correct') {
         greens[i] = letter;
+        presentLetters.add(letter);
       } else if (eval_[i] === 'present') {
         if (!yellows[letter]) yellows[letter] = new Set();
         yellows[letter].add(i);
-        yellowLetters.add(letter);
-      } else {
-        // Only mark gray if the letter isn't also green/yellow elsewhere
-        if (!greens[Object.keys(greens).find(k => greens[k] === letter)] && !yellowLetters.has(letter)) {
-          grays.add(letter);
-        }
+        presentLetters.add(letter);
+      }
+    }
+  }
+
+  // Pass 2: mark grays (only letters that are NEVER green or yellow)
+  for (const word of previousGuesses) {
+    const eval_ = evaluateGuess(word, target);
+    for (let i = 0; i < 5; i++) {
+      const letter = word[i];
+      if (eval_[i] === 'absent' && !presentLetters.has(letter)) {
+        grays.add(letter);
       }
     }
   }
@@ -223,19 +232,20 @@ export function getBotGuess(previousGuesses, target) {
       // Yellow letters must not be in the positions we know they're NOT at
       if (yellows[letter] && yellows[letter].has(i)) return false;
     }
-    // Must contain all yellow letters somewhere
-    for (const yl of yellowLetters) {
+    // Must contain all yellow/green letters somewhere
+    for (const yl of presentLetters) {
       if (!word.includes(yl)) return false;
     }
     return true;
   });
 
   if (candidates.length > 0) {
-    // Add slight imperfection — bot doesn't always pick optimally (80% best, 20% random from candidates)
-    if (Math.random() < 0.8) {
-      return candidates[0]; // alphabetically first matching candidate
+    // Pick from top candidates — slight randomization for variety
+    if (candidates.length <= 3 || Math.random() < 0.7) {
+      return candidates[0]; // best matching candidate
     }
-    return candidates[Math.floor(Math.random() * Math.min(candidates.length, 10))];
+    // Pick randomly from the top 5 to add variety
+    return candidates[Math.floor(Math.random() * Math.min(candidates.length, 5))];
   }
 
   // Fallback: random word
