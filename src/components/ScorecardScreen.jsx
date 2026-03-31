@@ -6,8 +6,8 @@ import { useLeaderboard } from '../hooks/useLeaderboard';
 export default function ScorecardScreen({ scorecard, player1Name, player2Name, par, gameMode = 'scramble', holesPerRound, roomCode, wordSource, onPlayAgain }) {
   const saved = useRef(false);
   const [postedToLeaderboard, setPostedToLeaderboard] = useState(false);
-  const isDaily = wordSource === 'daily';
-  const { postScore, connected: lbConnected } = useLeaderboard(isDaily);
+  const isLeaderboardMode = wordSource === 'daily' || wordSource === 'mystery';
+  const { postScore, connected: lbConnected } = useLeaderboard(isLeaderboardMode);
   const totalP1 = scorecard.reduce((sum, h) => sum + h.player1Guesses, 0);
   const totalP2 = scorecard.reduce((sum, h) => sum + h.player2Guesses, 0);
   const totalPar = scorecard.length * par;
@@ -54,7 +54,7 @@ export default function ScorecardScreen({ scorecard, player1Name, player2Name, p
 
   // Post to leaderboard when daily and connected
   useEffect(() => {
-    if (isDaily && lbConnected && !postedToLeaderboard && scorecard.length > 0) {
+    if (isLeaderboardMode && lbConnected && !postedToLeaderboard && scorecard.length > 0) {
       const guessCount = gameMode === 'scramble'
         ? scrambleTotal
         : Math.min(totalP1, totalP2);
@@ -62,13 +62,14 @@ export default function ScorecardScreen({ scorecard, player1Name, player2Name, p
         player1: player1Name,
         player2: player2Name,
         gameMode,
+        wordSource: wordSource || 'daily',
         guessCount,
         roomCode: roomCode || null,
         date: new Date().toISOString().slice(0, 10),
       });
       setPostedToLeaderboard(true);
     }
-  }, [isDaily, lbConnected, postedToLeaderboard]);
+  }, [isLeaderboardMode, lbConnected, postedToLeaderboard]);
 
   return (
     <div className="scorecard-screen">
@@ -189,7 +190,7 @@ export default function ScorecardScreen({ scorecard, player1Name, player2Name, p
         )}
       </div>
 
-      {isDaily && postedToLeaderboard && (
+      {isLeaderboardMode && postedToLeaderboard && (
         <div className="leaderboard-posted">Posted to Daily Leaderboard</div>
       )}
 

@@ -1317,6 +1317,23 @@ td.hole-winner {
   white-space: nowrap;
 }
 
+.lb-mystery-tag {
+  font-size: 0.55rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(200,168,78,0.2);
+  color: var(--gold);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  margin-left: 0.3rem;
+  vertical-align: middle;
+}
+
+.word-source-group {
+  flex-wrap: wrap;
+}
+
 .leaderboard-posted {
   text-align: center;
   font-size: 0.85rem;

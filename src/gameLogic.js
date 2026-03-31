@@ -1,4 +1,4 @@
-import { getRandomWord, getDailyWords, fetchDailyWords, isValidWord } from './words';
+import { getRandomWord, getDailyWords, fetchDailyWords, getMysteryWord, isValidWord } from './words';
 
 export const GAME_MODES = {
   scramble: {
@@ -91,7 +91,8 @@ export function createInitialGameState(player1Name, player2Name, totalHoles, par
 
   // Pre-generate all words for daily mode so every hole is deterministic
   const dailyWords = wordSource === 'daily' ? getDailyWords(effectiveHoles) : null;
-  const firstWord = dailyWords ? dailyWords[0] : getRandomWord();
+  const mysteryWord = wordSource === 'mystery' ? getMysteryWord() : null;
+  const firstWord = dailyWords ? dailyWords[0] : mysteryWord ? mysteryWord : getRandomWord();
 
   return {
     player1Name,
@@ -145,4 +146,4 @@ export async function prefetchDailyWords(totalHoles, gameMode) {
   return await fetchDailyWords(effectiveHoles);
 }
 
-export { getRandomWord, getDailyWords, fetchDailyWords, isValidWord };
+export { getRandomWord, getDailyWords, fetchDailyWords, getMysteryWord, isValidWord };

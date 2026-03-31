@@ -1738,6 +1738,20 @@ export function getRandomWord() {
   return SOLUTION_WORDS[Math.floor(Math.random() * SOLUTION_WORDS.length)];
 }
 
+// Get today's mystery word — deterministic per day, different from NYT word
+// Uses a simple hash of the date string to pick from solution words
+export function getMysteryWord(dateStr) {
+  const d = dateStr || new Date().toISOString().slice(0, 10);
+  // Simple string hash
+  let hash = 0;
+  const seed = 'mystery-' + d;
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
+  }
+  const index = ((hash % SOLUTION_WORDS.length) + SOLUTION_WORDS.length) % SOLUTION_WORDS.length;
+  return SOLUTION_WORDS[index];
+}
+
 // Fetch today's actual word from the live NYT Wordle API
 async function fetchNYTWord(dateStr) {
   try {

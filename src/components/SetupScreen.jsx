@@ -14,8 +14,9 @@ export default function SetupScreen({ onStart, onBack, onlineMode, player1Name, 
   const canStart = onlineMode || (player1.trim() && player2.trim());
 
   const handleStart = () => {
-    const h = wordSource === 'daily' ? 1 : holes;
-    const p = wordSource === 'daily' ? 4 : par;
+    const isLocked = wordSource === 'daily' || wordSource === 'mystery';
+    const h = isLocked ? 1 : holes;
+    const p = isLocked ? 4 : par;
     if (onlineMode) {
       onStart(player1Name, player2Name, h, p, gameMode, wordSource);
     } else {
@@ -92,7 +93,7 @@ export default function SetupScreen({ onStart, onBack, onlineMode, player1Name, 
 
         <div className="setup-section">
           <label>Words</label>
-          <div className="button-group">
+          <div className="button-group word-source-group">
             <button
               className={`option-btn ${wordSource === 'random' ? 'active' : ''}`}
               onClick={() => setWordSource('random')}
@@ -105,18 +106,27 @@ export default function SetupScreen({ onStart, onBack, onlineMode, player1Name, 
             >
               Daily
             </button>
+            <button
+              className={`option-btn ${wordSource === 'mystery' ? 'active' : ''}`}
+              onClick={() => setWordSource('mystery')}
+            >
+              Mystery
+            </button>
           </div>
           {wordSource === 'daily' && (
             <p className="mode-note">Today's official Wordle — 1 hole, Par 4. Scores posted to leaderboard.</p>
           )}
+          {wordSource === 'mystery' && (
+            <p className="mode-note">Same mystery word for everyone today — not the NYT word. Scores posted to leaderboard.</p>
+          )}
         </div>
 
-        {wordSource !== 'daily' && (
+        {wordSource !== 'daily' && wordSource !== 'mystery' && (
           <div className="setup-row">
             <div className="setup-section">
               <label>Holes{gameMode === 'bestball' ? ' per Round' : ''}</label>
               <div className="button-group">
-                {[3, 6, 9, 18].map(n => (
+                {[1, 3, 6, 9, 18].map(n => (
                   <button
                     key={n}
                     className={`option-btn ${holes === n ? 'active' : ''}`}

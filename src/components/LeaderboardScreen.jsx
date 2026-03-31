@@ -96,6 +96,7 @@ export default function LeaderboardScreen({ onBack }) {
                     </td>
                     <td className="mode-cell">
                       {GAME_MODES[entry.gameMode]?.icon || ''} {GAME_MODES[entry.gameMode]?.label || entry.gameMode}
+                      {entry.wordSource === 'mystery' && <span className="lb-mystery-tag">Mystery</span>}
                     </td>
                     <td className="guesses-cell">{entry.guessCount}</td>
                     <td className={`score-cell ${label.cls}`}>{label.text}</td>

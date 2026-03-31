@@ -1,4 +1,5 @@
 import { evaluateGuess, getScoreLabel, getHoleScore, getEffectiveHoles, isValidWord, getRandomWord, getDailyWords, MAX_GUESSES_PER_PLAYER } from '../src/gameLogic.js';
+import { getMysteryWord } from '../src/words.js';
 
 export default class WordleScrambleServer {
   constructor(room) {
@@ -142,7 +143,8 @@ export default class WordleScrambleServer {
     const effectiveHoles = getEffectiveHoles(mode, holesPerRound);
     const isSequential = mode !== 'scramble';
     const dailyWords = source === 'daily' ? getDailyWords(effectiveHoles) : null;
-    const firstWord = dailyWords ? dailyWords[0] : getRandomWord();
+    const mysteryWord = source === 'mystery' ? getMysteryWord() : null;
+    const firstWord = dailyWords ? dailyWords[0] : mysteryWord ? mysteryWord : getRandomWord();
 
     Object.assign(this.state, {
       gameMode: mode,

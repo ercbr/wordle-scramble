@@ -31,7 +31,7 @@ export default class LeaderboardServer {
   }
 
   async handlePostScore(conn, msg) {
-    const { player1, player2, gameMode, guessCount, roomCode, date } = msg;
+    const { player1, player2, gameMode, wordSource, guessCount, roomCode, date } = msg;
     const scoreDate = date || new Date().toISOString().slice(0, 10);
     const key = `scores:${scoreDate}`;
 
@@ -44,6 +44,7 @@ export default class LeaderboardServer {
       player1,
       player2,
       gameMode,
+      wordSource: wordSource || 'daily',
       guessCount,
       roomCode: roomCode || null,
       timestamp: new Date().toISOString(),
