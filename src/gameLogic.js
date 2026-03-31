@@ -1,4 +1,4 @@
-import { getRandomWord, getDailyWords, fetchDailyWords, getMysteryWord, isValidWord } from './words';
+import { getRandomWord, getDailyWords, fetchDailyWords, getMysteryWord, isValidWord, SOLUTION_WORDS } from './words';
 
 export const GAME_MODES = {
   scramble: {
@@ -42,6 +42,13 @@ export const GAME_MODES = {
     label: 'Speed Round',
     icon: '⏱️',
     description: 'Scramble with a 30-second shot clock',
+  },
+  practice: {
+    id: 'practice',
+    label: 'Practice',
+    icon: '🤖',
+    description: 'Solo play with a virtual partner',
+    singlePlayer: true,
   },
 };
 
@@ -168,6 +175,71 @@ export function mergeKeyboardState(player1Guesses, player2Guesses, target) {
   }
 
   return keyboard;
+}
+
+// Bot guess for Practice mode — picks a reasonable word based on known constraints
+export function getBotGuess(previousGuesses, target) {
+  // First guess: use a strong opener
+  const openers = ['crane', 'slate', 'trace', 'audio', 'raise'];
+  if (previousGuesses.length === 0) {
+    return openers[Math.floor(Math.random() * openers.length)];
+  }
+
+  // Build constraints from previous guesses
+  const greens = {};    // position -> letter (must be here)
+  const yellows = {};   // letter -> Set of positions it's NOT at
+  const grays = new Set(); // letters not in the word at all
+  const yellowLetters = new Set(); // letters that ARE in the word somewhere
+
+  for (const word of previousGuesses) {
+    const eval_ = evaluateGuess(word, target);
+    for (let i = 0; i < 5; i++) {
+      const letter = word[i];
+      if (eval_[i] === 'correct') {
+        greens[i] = letter;
+      } else if (eval_[i] === 'present') {
+        if (!yellows[letter]) yellows[letter] = new Set();
+        yellows[letter].add(i);
+        yellowLetters.add(letter);
+      } else {
+        // Only mark gray if the letter isn't also green/yellow elsewhere
+        if (!greens[Object.keys(greens).find(k => greens[k] === letter)] && !yellowLetters.has(letter)) {
+          grays.add(letter);
+        }
+      }
+    }
+  }
+
+  // Filter candidates
+  const guessedWords = new Set(previousGuesses);
+  const candidates = SOLUTION_WORDS.filter(word => {
+    if (guessedWords.has(word)) return false;
+    for (let i = 0; i < 5; i++) {
+      const letter = word[i];
+      // Must match greens
+      if (greens[i] && word[i] !== greens[i]) return false;
+      // Must not have gray letters
+      if (grays.has(letter)) return false;
+      // Yellow letters must not be in the positions we know they're NOT at
+      if (yellows[letter] && yellows[letter].has(i)) return false;
+    }
+    // Must contain all yellow letters somewhere
+    for (const yl of yellowLetters) {
+      if (!word.includes(yl)) return false;
+    }
+    return true;
+  });
+
+  if (candidates.length > 0) {
+    // Add slight imperfection — bot doesn't always pick optimally (80% best, 20% random from candidates)
+    if (Math.random() < 0.8) {
+      return candidates[0]; // alphabetically first matching candidate
+    }
+    return candidates[Math.floor(Math.random() * Math.min(candidates.length, 10))];
+  }
+
+  // Fallback: random word
+  return getRandomWord();
 }
 
 export const MAX_GUESSES_PER_PLAYER = 6;

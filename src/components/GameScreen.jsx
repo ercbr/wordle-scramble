@@ -12,6 +12,7 @@ import {
   RELAY_GUESSES_PER_PLAYER,
   SPEED_ROUND_TIME,
   SUDDEN_DEATH_MAX_ROUNDS,
+  getBotGuess,
 } from '../gameLogic';
 
 export default function GameScreen({
@@ -33,7 +34,8 @@ export default function GameScreen({
   } = gameState;
 
   const isSequential = ['stroke', 'bestball', 'relay', 'sudden_death'].includes(gameMode);
-  const isScrambleLike = ['scramble', 'handicap', 'speed_round'].includes(gameMode);
+  const isScrambleLike = ['scramble', 'handicap', 'speed_round', 'practice'].includes(gameMode);
+  const isPractice = gameMode === 'practice';
 
   // Reset local state when hole changes or phase changes
   useEffect(() => {
@@ -41,6 +43,36 @@ export default function GameScreen({
     setShowResult(false);
     setMessage('');
   }, [currentHole, activePlayerPhase]);
+
+  // --- Practice mode: Bot auto-plays when it's Player 2's turn ---
+  useEffect(() => {
+    if (!isPractice || onlineMode || solved) return;
+    if (currentPlayer !== 2) return;
+
+    const allGuesses = [...player1Guesses, ...player2Guesses];
+    const botDelay = 800 + Math.random() * 700; // 0.8-1.5s delay for realism
+
+    const timeout = setTimeout(() => {
+      const botWord = getBotGuess(allGuesses, targetWord);
+      const isCorrect = botWord === targetWord;
+      setGameState(prev => {
+        const newP2 = [...prev.player2Guesses, botWord];
+        const p1Maxed = prev.player1Guesses.length >= MAX_GUESSES_PER_PLAYER;
+        const p2Maxed = newP2.length >= MAX_GUESSES_PER_PLAYER;
+        const bothMaxed = p1Maxed && p2Maxed;
+
+        return {
+          ...prev,
+          player2Guesses: newP2,
+          currentPlayer: isCorrect || bothMaxed ? prev.currentPlayer : 1,
+          solved: isCorrect || bothMaxed,
+          solvedBy: isCorrect ? 2 : (bothMaxed ? 0 : null),
+        };
+      });
+    }, botDelay);
+
+    return () => clearTimeout(timeout);
+  }, [isPractice, currentPlayer, solved, onlineMode, player1Guesses, player2Guesses, targetWord]);
 
   // --- Speed Round Timer ---
   useEffect(() => {

@@ -6,21 +6,23 @@ const modeList = Object.values(GAME_MODES);
 export default function SetupScreen({ onStart, onBack, onlineMode, player1Name, player2Name }) {
   const [player1, setPlayer1] = useState('');
   const [player2, setPlayer2] = useState('');
-  const [holes, setHoles] = useState(9);
+  const [holes, setHoles] = useState(1);
   const [par, setPar] = useState(4);
   const [gameMode, setGameMode] = useState('scramble');
   const [wordSource, setWordSource] = useState('random');
 
-  const canStart = onlineMode || (player1.trim() && player2.trim());
+  const isPractice = gameMode === 'practice';
+  const canStart = onlineMode || (player1.trim() && (isPractice || player2.trim()));
 
   const handleStart = () => {
     const isLocked = wordSource === 'daily' || wordSource === 'mystery';
     const h = isLocked ? 1 : holes;
     const p = isLocked ? 4 : par;
+    const p2Name = isPractice ? 'Bot' : player2.trim();
     if (onlineMode) {
       onStart(player1Name, player2Name, h, p, gameMode, wordSource);
     } else {
-      onStart(player1.trim(), player2.trim(), h, p, gameMode, wordSource);
+      onStart(player1.trim(), p2Name, h, p, gameMode, wordSource);
     }
   };
 
@@ -47,16 +49,23 @@ export default function SetupScreen({ onStart, onBack, onlineMode, player1Name, 
               />
             </div>
 
-            <div className="setup-section">
-              <label>Player 2</label>
-              <input
-                type="text"
-                value={player2}
-                onChange={e => setPlayer2(e.target.value)}
-                placeholder="Enter name..."
-                maxLength={16}
-              />
-            </div>
+            {isPractice ? (
+              <div className="setup-section">
+                <label>Partner</label>
+                <div className="bot-label">Bot</div>
+              </div>
+            ) : (
+              <div className="setup-section">
+                <label>Player 2</label>
+                <input
+                  type="text"
+                  value={player2}
+                  onChange={e => setPlayer2(e.target.value)}
+                  placeholder="Enter name..."
+                  maxLength={16}
+                />
+              </div>
+            )}
           </>
         )}
 
