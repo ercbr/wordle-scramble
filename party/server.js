@@ -31,6 +31,31 @@ export default class WordleScrambleServer {
     this.sessionTokens = {};
   }
 
+  // HTTP endpoint to proxy NYT Wordle API (avoids CORS)
+  async onRequest(req) {
+    const url = new URL(req.url);
+    const date = url.searchParams.get('date');
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return new Response(JSON.stringify({ error: 'Missing or invalid date param' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+    try {
+      const res = await fetch(`https://www.nytimes.com/svc/wordle/v2/${date}.json`);
+      if (res.ok) {
+        const data = await res.json();
+        return new Response(JSON.stringify({ solution: data.solution }), {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      }
+    } catch {}
+    return new Response(JSON.stringify({ error: 'Failed to fetch' }), {
+      status: 502,
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+    });
+  }
+
   onConnect(conn) {}
 
   onClose(conn) {

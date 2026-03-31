@@ -1757,13 +1757,18 @@ export function getMysteryWord(dateStr) {
   return SOLUTION_WORDS[index];
 }
 
-// Fetch today's actual word from the live NYT Wordle API
+// Fetch today's actual word via PartyKit proxy (avoids CORS blocking direct NYT API calls)
+const PARTYKIT_HOST = typeof window !== 'undefined'
+  ? (import.meta.env.VITE_PARTYKIT_HOST || `${window.location.hostname}:1999`)
+  : 'localhost:1999';
+
 async function fetchNYTWord(dateStr) {
   try {
-    const res = await fetch(`https://www.nytimes.com/svc/wordle/v2/${dateStr}.json`);
+    const protocol = PARTYKIT_HOST.includes('localhost') ? 'http' : 'https';
+    const res = await fetch(`${protocol}://${PARTYKIT_HOST}/party/nyt-proxy?date=${dateStr}`);
     if (res.ok) {
       const data = await res.json();
-      return data.solution.toLowerCase();
+      if (data.solution) return data.solution.toLowerCase();
     }
   } catch {}
   return null;
