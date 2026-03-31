@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { formatScore } from '../gameLogic';
 import { saveGame } from '../hooks/useGameHistory';
 import { useLeaderboard } from '../hooks/useLeaderboard';
+import { getTodayET } from '../words';
 
 export default function ScorecardScreen({ scorecard, player1Name, player2Name, par, gameMode = 'scramble', holesPerRound, roomCode, wordSource, onPlayAgain }) {
   const saved = useRef(false);
@@ -65,7 +66,7 @@ export default function ScorecardScreen({ scorecard, player1Name, player2Name, p
         wordSource: wordSource || 'daily',
         guessCount,
         roomCode: roomCode || null,
-        date: new Date().toISOString().slice(0, 10),
+        date: getTodayET(),
       });
       setPostedToLeaderboard(true);
     }

@@ -1738,10 +1738,15 @@ export function getRandomWord() {
   return SOLUTION_WORDS[Math.floor(Math.random() * SOLUTION_WORDS.length)];
 }
 
+// Get today's date in Eastern Time (matches NYT Wordle reset at midnight ET)
+export function getTodayET() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+
 // Get today's mystery word — deterministic per day, different from NYT word
 // Uses a simple hash of the date string to pick from solution words
 export function getMysteryWord(dateStr) {
-  const d = dateStr || new Date().toISOString().slice(0, 10);
+  const d = dateStr || getTodayET();
   // Simple string hash
   let hash = 0;
   const seed = 'mystery-' + d;
@@ -1774,8 +1779,10 @@ function getLocalDailyWord(dateObj) {
 }
 
 // Fetch a sequence of daily words (tries NYT API first, falls back to local list)
+// Uses Eastern Time dates to match NYT Wordle reset at midnight ET
 export async function fetchDailyWords(count) {
-  const today = new Date();
+  const todayET = getTodayET(); // YYYY-MM-DD in ET
+  const today = new Date(todayET + 'T12:00:00');
   const dates = [];
   for (let i = 0; i < count; i++) {
     const d = new Date(today);

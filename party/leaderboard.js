@@ -1,6 +1,11 @@
 // Leaderboard server — persists daily scores using Cloudflare Durable Object storage
 // Single room "daily-leaderboard" stores all tournament data
 
+// Get today's date in Eastern Time (matches NYT Wordle reset at midnight ET)
+function getTodayET() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+
 export default class LeaderboardServer {
   constructor(room) {
     this.room = room;
@@ -8,7 +13,7 @@ export default class LeaderboardServer {
 
   async onConnect(conn) {
     // Send today's scores on connect
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayET();
     const scores = await this.getScoresForDate(today);
     conn.send(JSON.stringify({ type: 'scores', date: today, scores }));
 
@@ -32,7 +37,7 @@ export default class LeaderboardServer {
 
   async handlePostScore(conn, msg) {
     const { player1, player2, gameMode, wordSource, guessCount, roomCode, date } = msg;
-    const scoreDate = date || new Date().toISOString().slice(0, 10);
+    const scoreDate = date || getTodayET();
     const key = `scores:${scoreDate}`;
 
     // Get existing scores for this date
@@ -69,7 +74,7 @@ export default class LeaderboardServer {
   }
 
   async handleGetScores(conn, msg) {
-    const date = msg.date || new Date().toISOString().slice(0, 10);
+    const date = msg.date || getTodayET();
     const scores = await this.getScoresForDate(date);
     conn.send(JSON.stringify({ type: 'scores', date, scores }));
   }

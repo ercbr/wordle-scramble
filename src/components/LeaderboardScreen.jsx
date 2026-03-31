@@ -1,10 +1,11 @@
 import { useLeaderboard } from '../hooks/useLeaderboard';
 import { GAME_MODES } from '../gameLogic';
+import { getTodayET } from '../words';
 
 export default function LeaderboardScreen({ onBack }) {
   const { scores, currentDate, dates, connected, fetchDate } = useLeaderboard();
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayET();
   const isToday = currentDate === today;
 
   const formatDate = (dateStr) => {

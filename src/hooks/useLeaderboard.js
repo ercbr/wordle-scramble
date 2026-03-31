@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import PartySocket from 'partysocket';
+import { getTodayET } from '../words';
 
 const PARTYKIT_HOST = import.meta.env.VITE_PARTYKIT_HOST
   || `${window.location.hostname}:1999`;
 
 export function useLeaderboard(enabled = true) {
   const [scores, setScores] = useState([]);
-  const [currentDate, setCurrentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [currentDate, setCurrentDate] = useState(getTodayET());
   const [dates, setDates] = useState([]);
   const [connected, setConnected] = useState(false);
   const wsRef = useRef(null);
