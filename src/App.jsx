@@ -43,7 +43,7 @@ function App() {
     if (gameState.currentHole >= gameState.totalHoles) {
       setScreen('scorecard');
     } else {
-      const isSequential = gameState.gameMode !== 'scramble';
+      const isSequential = ['stroke', 'bestball', 'relay', 'sudden_death'].includes(gameState.gameMode);
       setGameState(prev => {
         const nextHole = prev.currentHole + 1;
         const nextWord = prev.dailyWords
@@ -61,6 +61,8 @@ function App() {
           activePlayerPhase: isSequential ? 1 : null,
           p1HoleGuessCount: null,
           p1HoleGuesses: null,
+          suddenDeathRound: prev.gameMode === 'sudden_death' ? 1 : null,
+          timerStart: prev.gameMode === 'speed_round' ? Date.now() : null,
         };
       });
     }

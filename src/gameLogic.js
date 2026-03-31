@@ -19,7 +19,35 @@ export const GAME_MODES = {
     icon: '⛳',
     description: 'Solo play, best score counts (2 rounds)',
   },
+  handicap: {
+    id: 'handicap',
+    label: 'Handicap',
+    icon: '👀',
+    description: 'P1 guesses first, P2 sees it before guessing',
+  },
+  relay: {
+    id: 'relay',
+    label: 'Relay',
+    icon: '🎯',
+    description: 'P1 gets 3 guesses, then P2 gets 3',
+  },
+  sudden_death: {
+    id: 'sudden_death',
+    label: 'Sudden Death',
+    icon: '⚡',
+    description: '1 guess each per round, first to solve wins',
+  },
+  speed_round: {
+    id: 'speed_round',
+    label: 'Speed Round',
+    icon: '⏱️',
+    description: 'Scramble with a 30-second shot clock',
+  },
 };
+
+export const RELAY_GUESSES_PER_PLAYER = 3;
+export const SPEED_ROUND_TIME = 30; // seconds
+export const SUDDEN_DEATH_MAX_ROUNDS = 6;
 
 export function evaluateGuess(guess, target) {
   const result = Array(5).fill('absent');
@@ -87,7 +115,7 @@ export function getHoleScore(gameMode, p1Count, p2Count, par) {
 
 export function createInitialGameState(player1Name, player2Name, totalHoles, par, gameMode = 'scramble', wordSource = 'random') {
   const effectiveHoles = getEffectiveHoles(gameMode, totalHoles);
-  const isSequential = gameMode !== 'scramble';
+  const isSequential = ['stroke', 'bestball', 'relay', 'sudden_death'].includes(gameMode);
 
   // Pre-generate all words for daily mode so every hole is deterministic
   const dailyWords = wordSource === 'daily' ? getDailyWords(effectiveHoles) : null;
@@ -113,9 +141,13 @@ export function createInitialGameState(player1Name, player2Name, totalHoles, par
     scorecard: [],
     gameOver: false,
     // Sequential mode state
-    activePlayerPhase: isSequential ? 1 : null, // 1 or 2 for who is currently playing solo
-    p1HoleGuessCount: null, // stashed P1 guess count after P1 finishes
-    p1HoleGuesses: null,    // stashed P1 guesses for display in Best Ball
+    activePlayerPhase: isSequential ? 1 : null,
+    p1HoleGuessCount: null,
+    p1HoleGuesses: null,
+    // Sudden Death
+    suddenDeathRound: gameMode === 'sudden_death' ? 1 : null,
+    // Speed Round
+    timerStart: gameMode === 'speed_round' ? Date.now() : null,
   };
 }
 

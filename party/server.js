@@ -1,4 +1,4 @@
-import { evaluateGuess, getScoreLabel, getHoleScore, getEffectiveHoles, isValidWord, getRandomWord, getDailyWords, MAX_GUESSES_PER_PLAYER } from '../src/gameLogic.js';
+import { evaluateGuess, getScoreLabel, getHoleScore, getEffectiveHoles, isValidWord, getRandomWord, getDailyWords, MAX_GUESSES_PER_PLAYER, RELAY_GUESSES_PER_PLAYER, SUDDEN_DEATH_MAX_ROUNDS } from '../src/gameLogic.js';
 import { getMysteryWord } from '../src/words.js';
 
 export default class WordleScrambleServer {
@@ -141,7 +141,7 @@ export default class WordleScrambleServer {
     const source = wordSource || 'random';
     const holesPerRound = totalHoles || 9;
     const effectiveHoles = getEffectiveHoles(mode, holesPerRound);
-    const isSequential = mode !== 'scramble';
+    const isSequential = ['stroke', 'bestball', 'relay', 'sudden_death'].includes(mode);
     const dailyWords = source === 'daily' ? getDailyWords(effectiveHoles) : null;
     const mysteryWord = source === 'mystery' ? getMysteryWord() : null;
     const firstWord = dailyWords ? dailyWords[0] : mysteryWord ? mysteryWord : getRandomWord();
@@ -165,6 +165,7 @@ export default class WordleScrambleServer {
       activePlayerPhase: isSequential ? 1 : null,
       p1HoleGuessCount: null,
       p1HoleGuesses: null,
+      suddenDeathRound: mode === 'sudden_death' ? 1 : null,
       phase: 'playing',
     });
 
@@ -177,7 +178,7 @@ export default class WordleScrambleServer {
     const player = this.state.players[conn.id];
     if (!player) return;
 
-    const isSequential = this.state.gameMode !== 'scramble';
+    const isSequential = ['stroke', 'bestball', 'relay', 'sudden_death'].includes(this.state.gameMode);
 
     // Turn validation
     if (isSequential) {
@@ -206,7 +207,11 @@ export default class WordleScrambleServer {
     const entry = { word: guess, evaluation };
     const isCorrect = guess === this.state.targetWord;
 
-    if (isSequential) {
+    if (this.state.gameMode === 'sudden_death') {
+      this.handleSuddenDeathGuess(player, entry, isCorrect);
+    } else if (this.state.gameMode === 'relay') {
+      this.handleRelayGuess(player, entry, isCorrect);
+    } else if (isSequential) {
       this.handleSequentialGuess(player, entry, isCorrect);
     } else {
       this.handleScrambleGuess(player, entry, isCorrect);
@@ -274,6 +279,83 @@ export default class WordleScrambleServer {
     // If not complete, same player continues (no turn switch)
   }
 
+  handleSuddenDeathGuess(player, entry, isCorrect) {
+    const phase = this.state.activePlayerPhase;
+    const isP1Phase = phase === 1;
+
+    if (isP1Phase) {
+      this.state.player1Guesses.push(entry);
+    } else {
+      this.state.player2Guesses.push(entry);
+    }
+
+    if (isCorrect) {
+      this.state.solved = true;
+      this.state.solvedBy = phase;
+      this.state.revealedWord = this.state.targetWord;
+      this.state.phase = 'hole_result';
+      return;
+    }
+
+    if (isP1Phase) {
+      // P1 done, P2's turn
+      this.state.activePlayerPhase = 2;
+      this.state.currentPlayer = 2;
+    } else {
+      // Both guessed this round, neither solved → next round
+      const nextRound = (this.state.suddenDeathRound || 1) + 1;
+      if (nextRound > SUDDEN_DEATH_MAX_ROUNDS) {
+        this.state.solved = true;
+        this.state.solvedBy = 0;
+        this.state.revealedWord = this.state.targetWord;
+        this.state.phase = 'hole_result';
+      } else {
+        this.state.suddenDeathRound = nextRound;
+        this.state.activePlayerPhase = 1;
+        this.state.currentPlayer = 1;
+      }
+    }
+  }
+
+  handleRelayGuess(player, entry, isCorrect) {
+    const phase = this.state.activePlayerPhase;
+    const isP1Phase = phase === 1;
+
+    if (isP1Phase) {
+      this.state.player1Guesses.push(entry);
+    } else {
+      this.state.player2Guesses.push(entry);
+    }
+
+    if (isCorrect) {
+      this.state.solved = true;
+      this.state.solvedBy = phase;
+      this.state.revealedWord = this.state.targetWord;
+      this.state.phase = 'hole_result';
+      if (isP1Phase) {
+        this.state.p1HoleGuessCount = this.state.player1Guesses.length;
+      }
+      return;
+    }
+
+    const guesses = isP1Phase ? this.state.player1Guesses : this.state.player2Guesses;
+    const maxedOut = guesses.length >= RELAY_GUESSES_PER_PLAYER;
+
+    if (maxedOut && isP1Phase) {
+      // P1 used 3 guesses → transition to P2
+      this.state.p1HoleGuessCount = this.state.player1Guesses.length;
+      this.state.p1HoleGuesses = [...this.state.player1Guesses];
+      this.state.activePlayerPhase = 2;
+      this.state.currentPlayer = 2;
+    } else if (maxedOut && !isP1Phase) {
+      // P2 used 3 guesses without solving → hole over
+      this.state.solved = true;
+      this.state.solvedBy = 0;
+      this.state.revealedWord = this.state.targetWord;
+      this.state.phase = 'hole_result';
+    }
+  }
+
   handleNextHole(conn) {
     if (this.state.phase !== 'hole_result') return;
 
@@ -281,7 +363,16 @@ export default class WordleScrambleServer {
     const p2Count = this.state.player2Guesses.length;
     const { gameMode, par } = this.state;
 
-    if (gameMode === 'scramble') {
+    if (gameMode === 'sudden_death') {
+      const rounds = this.state.suddenDeathRound || 1;
+      const scoreInfo = getScoreLabel(rounds, par);
+      this.state.scorecard.push({
+        hole: this.state.currentHole, par, gameMode,
+        player1Guesses: p1Count, player2Guesses: p2Count,
+        totalGuesses: p1Count + p2Count, suddenDeathRounds: rounds,
+        score: rounds - par, label: scoreInfo.label,
+      });
+    } else if (['scramble', 'handicap', 'speed_round', 'relay'].includes(gameMode)) {
       const total = p1Count + p2Count;
       const scoreInfo = getScoreLabel(total, par);
       this.state.scorecard.push({
@@ -305,7 +396,7 @@ export default class WordleScrambleServer {
     if (this.state.currentHole >= this.state.totalHoles) {
       this.state.phase = 'scorecard';
     } else {
-      const isSequential = gameMode !== 'scramble';
+      const isSequential = ['stroke', 'bestball', 'relay', 'sudden_death'].includes(gameMode);
       const nextHole = this.state.currentHole + 1;
       const nextWord = this.state.dailyWords
         ? this.state.dailyWords[nextHole - 1]
@@ -322,6 +413,7 @@ export default class WordleScrambleServer {
         activePlayerPhase: isSequential ? 1 : null,
         p1HoleGuessCount: null,
         p1HoleGuesses: null,
+        suddenDeathRound: gameMode === 'sudden_death' ? 1 : null,
         phase: 'playing',
       });
     }
@@ -348,7 +440,7 @@ export default class WordleScrambleServer {
     }
 
     const { gameMode, activePlayerPhase } = this.state;
-    const isSequential = gameMode !== 'scramble';
+    const isSequential = ['stroke', 'bestball', 'relay', 'sudden_death'].includes(gameMode);
 
     // Stroke play: hide P1's guesses from P2 during P1's phase
     let p1Guesses = this.state.player1Guesses;
@@ -379,6 +471,7 @@ export default class WordleScrambleServer {
       activePlayerPhase,
       p1HoleGuessCount: this.state.p1HoleGuessCount,
       p1HoleGuesses,
+      suddenDeathRound: this.state.suddenDeathRound,
     };
   }
 

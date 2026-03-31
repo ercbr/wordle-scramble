@@ -127,6 +127,7 @@ export default function OnlineGame({ roomCode, playerName, onLeave }) {
       activePlayerPhase: roomState.activePlayerPhase,
       p1HoleGuessCount: roomState.p1HoleGuessCount,
       p1HoleGuesses: roomState.p1HoleGuesses,
+      suddenDeathRound: roomState.suddenDeathRound,
     };
 
     return (

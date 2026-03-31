@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 export default function HoleResultOverlay({
   scoreInfo, totalGuesses, par, onNext, isLastHole,
   gameMode, p1Count, p2Count, player1Name, player2Name,
+  suddenDeathRound,
 }) {
   const [visible, setVisible] = useState(false);
 
@@ -11,7 +12,7 @@ export default function HoleResultOverlay({
     return () => clearTimeout(t);
   }, []);
 
-  const isSequential = gameMode && gameMode !== 'scramble';
+  const isSequential = ['stroke', 'bestball', 'relay', 'sudden_death'].includes(gameMode);
   const bestScore = isSequential ? Math.min(p1Count, p2Count) : null;
 
   return (
@@ -20,7 +21,21 @@ export default function HoleResultOverlay({
         <div className="result-emoji">{scoreInfo.emoji}</div>
         <h2 className="result-label">{scoreInfo.label}</h2>
 
-        {isSequential ? (
+        {gameMode === 'sudden_death' ? (
+          <div className="result-players">
+            <div className="result-detail">
+              {suddenDeathRound === 1 ? 'Solved in Round 1!' : `${suddenDeathRound} rounds`} — Par {par}
+            </div>
+            <div className={`result-player-score ${p1Count <= p2Count ? 'winner' : ''}`}>
+              <span className="player-dot p1" />
+              {player1Name}: {p1Count} guess{p1Count !== 1 ? 'es' : ''}
+            </div>
+            <div className={`result-player-score ${p2Count <= p1Count ? 'winner' : ''}`}>
+              <span className="player-dot p2" />
+              {player2Name}: {p2Count} guess{p2Count !== 1 ? 'es' : ''}
+            </div>
+          </div>
+        ) : isSequential ? (
           <div className="result-players">
             <div className={`result-player-score ${p1Count <= p2Count ? 'winner' : ''}`}>
               <span className="player-dot p1" />
@@ -38,6 +53,11 @@ export default function HoleResultOverlay({
             {gameMode === 'stroke' && (
               <div className="result-detail" style={{ marginTop: '0.5rem' }}>
                 {p1Count === p2Count ? 'Tied!' : `${p1Count < p2Count ? player1Name : player2Name} wins the hole!`}
+              </div>
+            )}
+            {gameMode === 'relay' && (
+              <div className="result-detail" style={{ marginTop: '0.5rem' }}>
+                {totalGuesses} total guesses — Par {par}
               </div>
             )}
           </div>

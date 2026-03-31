@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import PlayerBoard from './PlayerBoard';
 import SharedKeyboard from './SharedKeyboard';
 import HoleResultOverlay from './HoleResultOverlay';
@@ -9,6 +9,9 @@ import {
   getHoleScore,
   isValidWord,
   MAX_GUESSES_PER_PLAYER,
+  RELAY_GUESSES_PER_PLAYER,
+  SPEED_ROUND_TIME,
+  SUDDEN_DEATH_MAX_ROUNDS,
 } from '../gameLogic';
 
 export default function GameScreen({
@@ -19,14 +22,18 @@ export default function GameScreen({
   const [shake, setShake] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [message, setMessage] = useState('');
+  const [timer, setTimer] = useState(SPEED_ROUND_TIME);
+  const timerRef = useRef(null);
 
   const {
     player1Name, player2Name, currentHole, totalHoles, par,
     targetWord, player1Guesses, player2Guesses, currentPlayer, solved,
     gameMode = 'scramble', activePlayerPhase, p1HoleGuessCount, p1HoleGuesses,
+    suddenDeathRound,
   } = gameState;
 
-  const isSequential = gameMode !== 'scramble';
+  const isSequential = ['stroke', 'bestball', 'relay', 'sudden_death'].includes(gameMode);
+  const isScrambleLike = ['scramble', 'handicap', 'speed_round'].includes(gameMode);
 
   // Reset local state when hole changes or phase changes
   useEffect(() => {
@@ -35,24 +42,48 @@ export default function GameScreen({
     setMessage('');
   }, [currentHole, activePlayerPhase]);
 
+  // --- Speed Round Timer ---
+  useEffect(() => {
+    if (gameMode !== 'speed_round' || solved || onlineMode) return;
+    setTimer(SPEED_ROUND_TIME);
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    timerRef.current = setInterval(() => {
+      setTimer(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          // Time's up — skip this turn
+          setGameState(prevState => {
+            const next = prevState.currentPlayer === 1 ? 2 : 1;
+            return { ...prevState, currentPlayer: next, timerStart: Date.now() };
+          });
+          setCurrentGuess('');
+          setTimer(SPEED_ROUND_TIME);
+          return SPEED_ROUND_TIME;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [gameMode, solved, currentPlayer, currentHole, onlineMode]);
+
   // In online mode, guesses are [{word, evaluation}]. Extract just words for counting.
   const p1Words = onlineMode ? player1Guesses.map(g => g.word) : player1Guesses;
   const p2Words = onlineMode ? player2Guesses.map(g => g.word) : player2Guesses;
 
   // For sequential modes, "active guesses" are the current phase player's guesses
-  const activeGuesses = isSequential
-    ? (activePlayerPhase === 1 ? player1Guesses : player2Guesses)
-    : [...player1Guesses, ...player2Guesses];
   const activeGuessCount = isSequential
     ? (activePlayerPhase === 1 ? p1Words.length : p2Words.length)
     : (p1Words.length + p2Words.length);
 
-  // Build keyboard state — only show active player's letters in sequential mode
+  // Build keyboard state
   const keyboardState = (() => {
     if (onlineMode) {
       const keyboard = {};
-      // In sequential mode, only show current phase's guesses on keyboard
-      const guessesToShow = isSequential
+      // Stroke/bestball: only show current phase. Relay/sudden_death/others: show all.
+      const hideOther = gameMode === 'stroke';
+      const guessesToShow = (isSequential && hideOther)
         ? (activePlayerPhase === 1 ? player1Guesses : player2Guesses)
         : [...player1Guesses, ...player2Guesses];
       for (const { word, evaluation } of guessesToShow) {
@@ -67,11 +98,11 @@ export default function GameScreen({
       }
       return keyboard;
     }
-    if (isSequential) {
-      // Only show active player's keyboard state
+    if (gameMode === 'stroke') {
       const guesses = activePlayerPhase === 1 ? player1Guesses : player2Guesses;
       return mergeKeyboardState(guesses, [], targetWord);
     }
+    // All other modes: show all guesses on keyboard
     return mergeKeyboardState(player1Guesses, player2Guesses, targetWord);
   })();
 
@@ -110,8 +141,102 @@ export default function GameScreen({
     // --- Local mode ---
     const isCorrect = guess === targetWord;
 
-    if (isSequential) {
-      // Sequential mode: active player keeps guessing, no alternation
+    if (gameMode === 'sudden_death') {
+      // Sudden Death: 1 guess per phase, then round advances
+      const phase = activePlayerPhase;
+      setGameState(prev => {
+        const isP1Phase = phase === 1;
+        const newP1 = isP1Phase ? [...prev.player1Guesses, guess] : prev.player1Guesses;
+        const newP2 = !isP1Phase ? [...prev.player2Guesses, guess] : prev.player2Guesses;
+
+        if (isCorrect) {
+          return {
+            ...prev,
+            player1Guesses: newP1,
+            player2Guesses: newP2,
+            solved: true,
+            solvedBy: phase,
+          };
+        }
+
+        if (isP1Phase) {
+          // P1 guessed, not correct → P2's turn
+          return {
+            ...prev,
+            player1Guesses: newP1,
+            activePlayerPhase: 2,
+            currentPlayer: 2,
+          };
+        }
+
+        // P2 guessed, not correct → new round (or max rounds reached)
+        const nextRound = (prev.suddenDeathRound || 1) + 1;
+        if (nextRound > SUDDEN_DEATH_MAX_ROUNDS) {
+          return {
+            ...prev,
+            player2Guesses: newP2,
+            solved: true,
+            solvedBy: 0, // nobody solved
+          };
+        }
+        return {
+          ...prev,
+          player2Guesses: newP2,
+          suddenDeathRound: nextRound,
+          activePlayerPhase: 1,
+          currentPlayer: 1,
+        };
+      });
+    } else if (gameMode === 'relay') {
+      // Relay: P1 gets first 3, P2 gets next 3
+      const phase = activePlayerPhase;
+      setGameState(prev => {
+        const isP1Phase = phase === 1;
+        const newGuesses = isP1Phase
+          ? [...prev.player1Guesses, guess]
+          : [...prev.player2Guesses, guess];
+        const guessCount = newGuesses.length;
+        const maxForRelay = RELAY_GUESSES_PER_PLAYER;
+        const maxedOut = guessCount >= maxForRelay;
+        const phaseComplete = isCorrect || maxedOut;
+
+        if (isCorrect) {
+          return {
+            ...prev,
+            ...(isP1Phase ? { player1Guesses: newGuesses } : { player2Guesses: newGuesses }),
+            solved: true,
+            solvedBy: phase,
+            p1HoleGuessCount: isP1Phase ? guessCount : prev.p1HoleGuessCount,
+          };
+        }
+
+        if (phaseComplete && isP1Phase) {
+          return {
+            ...prev,
+            player1Guesses: newGuesses,
+            p1HoleGuessCount: guessCount,
+            p1HoleGuesses: newGuesses,
+            activePlayerPhase: 2,
+            currentPlayer: 2,
+          };
+        }
+
+        if (phaseComplete && !isP1Phase) {
+          return {
+            ...prev,
+            player2Guesses: newGuesses,
+            solved: true,
+            solvedBy: 0,
+          };
+        }
+
+        return {
+          ...prev,
+          ...(isP1Phase ? { player1Guesses: newGuesses } : { player2Guesses: newGuesses }),
+        };
+      });
+    } else if (isSequential) {
+      // Stroke Play / Best Ball: existing sequential logic
       const phase = activePlayerPhase;
       setGameState(prev => {
         const isP1Phase = phase === 1;
@@ -123,21 +248,19 @@ export default function GameScreen({
         const phaseComplete = isCorrect || maxedOut;
 
         if (phaseComplete && isP1Phase) {
-          // P1 finished — transition to P2
           return {
             ...prev,
             player1Guesses: newGuesses,
             p1HoleGuessCount: guessCount,
-            p1HoleGuesses: newGuesses, // stash for Best Ball display
+            p1HoleGuesses: newGuesses,
             player2Guesses: [],
             activePlayerPhase: 2,
             currentPlayer: 2,
-            solved: false, // reset for P2's turn
+            solved: false,
           };
         }
 
         if (phaseComplete && !isP1Phase) {
-          // P2 finished — hole is complete
           return {
             ...prev,
             player2Guesses: newGuesses,
@@ -146,16 +269,13 @@ export default function GameScreen({
           };
         }
 
-        // Not complete yet — same player continues
         return {
           ...prev,
-          ...(isP1Phase
-            ? { player1Guesses: newGuesses }
-            : { player2Guesses: newGuesses }),
+          ...(isP1Phase ? { player1Guesses: newGuesses } : { player2Guesses: newGuesses }),
         };
       });
     } else {
-      // Scramble mode (original logic)
+      // Scramble / Handicap / Speed Round (alternating turns)
       const isP1 = currentPlayer === 1;
       setGameState(prev => {
         const newP1 = isP1 ? [...prev.player1Guesses, guess] : prev.player1Guesses;
@@ -175,12 +295,15 @@ export default function GameScreen({
           currentPlayer: isCorrect || bothMaxed ? prev.currentPlayer : nextPlayer,
           solved: isCorrect || bothMaxed,
           solvedBy: isCorrect ? prev.currentPlayer : (bothMaxed ? 0 : null),
+          timerStart: gameMode === 'speed_round' ? Date.now() : prev.timerStart,
         };
       });
     }
 
     setCurrentGuess('');
-  }, [currentGuess, currentPlayer, solved, targetWord, setGameState, onlineMode, send, inputDisabled, isSequential, activePlayerPhase]);
+    // Reset speed round timer on successful guess
+    if (gameMode === 'speed_round') setTimer(SPEED_ROUND_TIME);
+  }, [currentGuess, currentPlayer, solved, targetWord, setGameState, onlineMode, send, inputDisabled, isSequential, activePlayerPhase, gameMode]);
 
   const handleKey = useCallback((key) => {
     if (inputDisabled) return;
@@ -222,7 +345,17 @@ export default function GameScreen({
     const p1Count = p1HoleGuessCount ?? p1Words.length;
     const p2Count = p2Words.length;
 
-    if (gameMode === 'scramble') {
+    if (gameMode === 'sudden_death') {
+      const rounds = gameState.suddenDeathRound || 1;
+      const scoreInfo = getScoreLabel(rounds, par);
+      onHoleComplete({
+        hole: currentHole, par, gameMode,
+        player1Guesses: p1Count, player2Guesses: p2Count,
+        totalGuesses: p1Count + p2Count,
+        score: rounds - par, label: scoreInfo.label,
+        suddenDeathRounds: rounds,
+      });
+    } else if (isScrambleLike || gameMode === 'relay') {
       const total = p1Count + p2Count;
       const scoreInfo = getScoreLabel(total, par);
       onHoleComplete({
@@ -265,40 +398,62 @@ export default function GameScreen({
     ? (activePlayerPhase === 1 ? player1Name : player2Name)
     : (currentPlayer === 1 ? player1Name : player2Name);
 
-  // Determine which boards to show based on mode
+  // Determine which boards to show
   const showP1Board = (() => {
-    if (!isSequential) return true; // scramble: always show both
-    if (gameMode === 'stroke') {
-      // Stroke: only show active phase's board
-      return activePlayerPhase === 1 || solved;
-    }
-    // Best Ball: always show P1 (reference for P2)
+    if (isScrambleLike) return true;
+    if (gameMode === 'stroke') return activePlayerPhase === 1 || solved;
+    // relay, bestball, sudden_death: always show both
     return true;
   })();
 
   const showP2Board = (() => {
-    if (!isSequential) return true;
-    if (gameMode === 'stroke') {
-      return activePlayerPhase === 2 || solved;
-    }
-    // Best Ball: show P2 board during P2's phase or when solved
-    return activePlayerPhase === 2 || solved;
+    if (isScrambleLike) return true;
+    if (gameMode === 'stroke') return activePlayerPhase === 2 || solved;
+    if (gameMode === 'relay' || gameMode === 'sudden_death') return true;
+    return activePlayerPhase === 2 || solved; // bestball
   })();
 
-  // For Best Ball P2 phase: show P1's stashed guesses as reference
+  // For relay/bestball P2 phase: show P1's stashed guesses as reference
   const p1DisplayGuesses = isSequential && activePlayerPhase === 2 && p1HoleGuesses
     ? p1HoleGuesses
     : player1Guesses;
 
-  // Guess count display for header
-  const headerGuessText = isSequential
-    ? `${activeGuessCount} guess${activeGuessCount !== 1 ? 'es' : ''}`
-    : `${p1Words.length + p2Words.length} guess${(p1Words.length + p2Words.length) !== 1 ? 'es' : ''}`;
+  // Header text
+  const headerGuessText = (() => {
+    if (gameMode === 'sudden_death') return `Round ${suddenDeathRound || 1}`;
+    if (isSequential) return `${activeGuessCount} guess${activeGuessCount !== 1 ? 'es' : ''}`;
+    return `${p1Words.length + p2Words.length} guess${(p1Words.length + p2Words.length) !== 1 ? 'es' : ''}`;
+  })();
 
-  // Round indicator for best ball
   const roundLabel = gameMode === 'bestball' && gameState.holesPerRound
     ? (currentHole <= gameState.holesPerRound ? 'Round 1' : 'Round 2')
     : null;
+
+  // Phase indicator text
+  const phaseText = (() => {
+    if (!isSequential || solved) return null;
+    if (gameMode === 'sudden_death') return `${activePlayerName}'s guess — Round ${suddenDeathRound || 1}`;
+    if (gameMode === 'relay') {
+      const remaining = RELAY_GUESSES_PER_PLAYER - (activePlayerPhase === 1 ? p1Words.length : p2Words.length);
+      return `${activePlayerName}'s segment — ${remaining} guess${remaining !== 1 ? 'es' : ''} left`;
+    }
+    let text = `${activePlayerName}'s solo round`;
+    if (p1HoleGuessCount !== null && activePlayerPhase === 2) {
+      text += ` — ${player1Name} scored ${p1HoleGuessCount}`;
+    }
+    return text;
+  })();
+
+  // Score info for overlay
+  const overlayScoreInfo = (() => {
+    if (gameMode === 'sudden_death') {
+      return getScoreLabel(suddenDeathRound || 1, par);
+    }
+    if (isSequential && !isScrambleLike) {
+      return getScoreLabel(Math.min(p1HoleGuessCount ?? p1Words.length, p2Words.length), par);
+    }
+    return getScoreLabel(p1Words.length + p2Words.length, par);
+  })();
 
   return (
     <div className="game-screen">
@@ -310,13 +465,10 @@ export default function GameScreen({
         {roomCode && <div className="hole-room-code">{roomCode}</div>}
       </div>
 
-      {isSequential && !solved && (
+      {phaseText && (
         <div className="phase-indicator">
           <span className={`player-dot p${activePlayerPhase}`} />
-          {activePlayerName}'s solo round
-          {p1HoleGuessCount !== null && activePlayerPhase === 2 && (
-            <span className="phase-p1-score"> — {player1Name} scored {p1HoleGuessCount}</span>
-          )}
+          {phaseText}
         </div>
       )}
 
@@ -328,10 +480,10 @@ export default function GameScreen({
             playerName={player1Name}
             guesses={onlineMode ? p1DisplayGuesses : (p1DisplayGuesses || player1Guesses).map(w => typeof w === 'string' ? { word: w } : w)}
             targetWord={targetWord}
-            isActive={!isSequential ? (currentPlayer === 1 && !solved) : (activePlayerPhase === 1 && !solved)}
+            isActive={isSequential ? (activePlayerPhase === 1 && !solved) : (currentPlayer === 1 && !solved)}
             playerNumber={1}
             onlineMode={onlineMode}
-            dimmed={isSequential && activePlayerPhase === 2 && !solved}
+            dimmed={isSequential && activePlayerPhase === 2 && !solved && gameMode !== 'sudden_death'}
           />
         )}
         {showP2Board && (
@@ -339,7 +491,7 @@ export default function GameScreen({
             playerName={player2Name}
             guesses={onlineMode ? player2Guesses : player2Guesses.map(w => typeof w === 'string' ? { word: w } : w)}
             targetWord={targetWord}
-            isActive={!isSequential ? (currentPlayer === 2 && !solved) : (activePlayerPhase === 2 && !solved)}
+            isActive={isSequential ? (activePlayerPhase === 2 && !solved) : (currentPlayer === 2 && !solved)}
             playerNumber={2}
             onlineMode={onlineMode}
           />
@@ -353,6 +505,11 @@ export default function GameScreen({
             {onlineMode && !isMyTurn
               ? `Waiting for ${activePlayerName}...`
               : `${activePlayerName}'s turn`}
+            {gameMode === 'speed_round' && !onlineMode && (
+              <span className={`speed-timer ${timer <= 10 ? 'warning' : ''} ${timer <= 5 ? 'danger' : ''}`}>
+                {timer}s
+              </span>
+            )}
           </div>
           {(!onlineMode || isMyTurn) && buildCurrentInput()}
         </div>
@@ -372,9 +529,7 @@ export default function GameScreen({
 
       {showResult && (
         <HoleResultOverlay
-          scoreInfo={isSequential
-            ? getScoreLabel(Math.min(p1HoleGuessCount ?? p1Words.length, p2Words.length), par)
-            : getScoreLabel(p1Words.length + p2Words.length, par)}
+          scoreInfo={overlayScoreInfo}
           totalGuesses={p1Words.length + p2Words.length}
           par={par}
           onNext={handleNextHole}
@@ -384,6 +539,7 @@ export default function GameScreen({
           p2Count={p2Words.length}
           player1Name={player1Name}
           player2Name={player2Name}
+          suddenDeathRound={suddenDeathRound}
         />
       )}
     </div>

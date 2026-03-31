@@ -981,6 +981,35 @@ td.even, .score-row td.even { color: var(--sand); }
   margin-left: auto;
 }
 
+/* ===== SPEED ROUND TIMER ===== */
+
+.speed-timer {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(106,170,100,0.15);
+  color: #6aaa64;
+}
+
+.speed-timer.warning {
+  background: rgba(200,168,78,0.2);
+  color: var(--gold);
+}
+
+.speed-timer.danger {
+  background: rgba(204,68,68,0.2);
+  color: #c44;
+  animation: pulse 0.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .player-board.dimmed {
   opacity: 0.5;
 }
